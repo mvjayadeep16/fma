@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FlashMan | SRM Attendance & Margin Engine</title>
+  <meta name="description" content="Next-generation attendance and margin tracker for SRM University students. Real-time bunk margin calculator, shortage recovery, and attendance simulator.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=3">
+  <link rel="icon" type="image/png" href="assets/flashman_logo.png">
+</head>
+<body class="dark-theme">
+  <!-- Subtle Ambient Glow Orbs -->
+  <div class="ambient-glow glow-cyan"></div>
+  <div class="ambient-glow glow-amber"></div>
+  <div class="ambient-glow glow-purple"></div>
+
+  <!-- Main Navigation Bar -->
+  <header class="navbar">
+    <div class="nav-container">
+      <div class="brand">
+        <div class="logo-wrapper">
+          <img src="assets/flashman_logo.png" alt="FlashMan Logo" class="brand-logo" id="brandLogo">
+          <span class="pulse-dot"></span>
+        </div>
+        <div class="brand-text">
+          <div class="brand-title">
+            <span class="highlight-flash">FLASH</span>MAN
+            <span class="badge-srm">SRMIST</span>
+          </div>
+          <span class="brand-tagline">Academic Margin & Attendance Intelligence</span>
+        </div>
+      </div>
+
+      <!-- Quick Action Controls -->
+      <div class="nav-actions">
+        <button class="btn btn-primary hidden" id="btnOpenLogin">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+          <span id="navLoginText">Switch Account</span>
+        </button>
+
+        <button class="icon-btn hidden" id="btnOpenSettings" title="Configure SRM Endpoints / API Setup">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+
+        <button class="icon-btn" id="btnThemeToggle" title="Toggle Light / Dark mode">
+          <span class="theme-icon">🌙</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-content hidden" id="mainDashboard">
+    <!-- Student Header & Source Banner -->
+    <section class="student-strip">
+      <div class="student-info-left">
+        <div class="avatar-ring">
+          <span class="avatar-letters" id="studentInitials">--</span>
+        </div>
+        <div class="student-meta">
+          <div class="name-line">
+            <h2 class="student-name" id="studentName">Not Logged In</h2>
+            <span class="student-reg" id="studentRegNo">Login Required</span>
+            <span class="data-source-pill" id="dataSourcePill">Awaiting Login</span>
+          </div>
+          <div class="student-details" id="studentDetails">
+            <div class="student-detail-item"><span class="detail-bullet">•</span><span>SRM Institute of Science and Technology</span></div>
+            <div class="student-detail-item"><span class="detail-bullet">•</span><span>sp.srmist.edu.in</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="student-info-right">
+        <div class="last-sync" id="lastSyncTime">Status: Offline</div>
+        <button class="btn btn-sm btn-ghost" id="btnQuickRefresh">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          Reload Data
+        </button>
+      </div>
+    </section>
+
+    <!-- Overall Statistics & Margin Hero Grid -->
+    <section class="stats-hero-grid">
+      <!-- 1. Circular Percentage Card -->
+      <div class="stat-card stat-card-radial">
+        <div class="radial-container">
+          <svg class="radial-svg" viewBox="0 0 120 120">
+            <circle class="radial-bg" cx="60" cy="60" r="50"></circle>
+            <circle class="radial-progress" id="radialOverallProgress" cx="60" cy="60" r="50"></circle>
+          </svg>
+          <div class="radial-content">
+            <span class="radial-val" id="overallPercentage">83.49%</span>
+            <span class="radial-label">Aggregate</span>
+          </div>
+        </div>
+        <div class="stat-meta-group">
+          <div class="status-indicator-tag safe" id="overallStatusBadge">
+            <span class="dot"></span>
+            <span class="status-text" id="overallStatusText">Attendance Safe</span>
+          </div>
+          <span class="subtext" id="targetComparisonText">8.49% above 75% target</span>
+        </div>
+      </div>
+
+      <!-- 2. Safe Bunk Margin Card (Crucial User Requirement) -->
+      <div class="stat-card stat-card-margin" id="marginSummaryCard">
+        <div class="card-icon-tag margin-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        </div>
+        <div class="card-body">
+          <div class="card-label">TOTAL BUNK MARGIN</div>
+          <div class="stat-value-row">
+            <span class="stat-number color-safe" id="totalMarginVal">+24</span>
+            <span class="stat-unit">Classes</span>
+          </div>
+          <div class="card-description" id="marginDescription">
+            You can safely miss up to <strong>24 classes</strong> across subjects without falling below your <strong>75% target</strong>.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Toolbar: Search & View Modes -->
+    <section class="toolbar-section">
+      <div class="toolbar-left">
+        <!-- Search bar -->
+        <div class="search-box">
+          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="courseSearchInput" placeholder="Search by course code, title, or faculty..." autocomplete="off">
+          <span class="kbd-shortcut">ESC</span>
+        </div>
+      </div>
+
+      <div class="toolbar-right">
+        <!-- Sort dropdown -->
+        <div class="select-wrapper">
+          <label for="sortBySelect" class="sr-only">Sort by</label>
+          <select id="sortBySelect" class="select-control">
+            <option value="risk">Sort: Highest Risk First</option>
+            <option value="percent-asc">Sort: Attendance (Low to High)</option>
+            <option value="percent-desc">Sort: Attendance (High to Low)</option>
+            <option value="margin-desc">Sort: Most Margin First</option>
+            <option value="code">Sort: Course Code</option>
+          </select>
+        </div>
+
+        <!-- View Toggle -->
+        <div class="view-toggle-group">
+          <button class="view-btn active" id="btnViewCards" title="Card View">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          </button>
+          <button class="view-btn" id="btnViewTable" title="Table View">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Course Cards View Container -->
+    <section class="courses-container" id="coursesCardsContainer">
+      <!-- Populated dynamically via JS -->
+    </section>
+
+    <!-- Detailed Table View Container (Hidden by default) -->
+    <section class="table-container-wrap hidden" id="coursesTableContainer">
+      <div class="glass-table-wrapper">
+        <table class="glass-table" id="coursesTable">
+          <thead>
+            <tr>
+              <th>Course Code</th>
+              <th>Course Title</th>
+              <th>Slot / Type</th>
+              <th>Faculty</th>
+              <th>Conducted</th>
+              <th>Attended</th>
+              <th>Absent</th>
+              <th>Percentage</th>
+              <th>Margin / Recovery</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="coursesTableBody">
+            <!-- Populated dynamically -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ================= MODALS ================= -->
+
+  <!-- 1. FlashMan Portal Live Login Modal -->
+  <div class="modal-backdrop open" id="loginModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <img src="assets/flashman_logo.png" class="modal-logo" alt="FlashMan Logo">
+          <div>
+            <h3 class="modal-title">FlashMan Portal Login</h3>
+            <p class="modal-subtitle">FlashMan Attendance &amp; Margin Engine</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Credentials Login Form -->
+      <form id="srmLoginForm" class="modal-body">
+        <div class="form-group">
+          <label for="inputNetId">NetID (without '@srmist.edu.in')</label>
+          <div class="input-with-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <input type="text" id="inputNetId" placeholder="NetID" required>
+          </div>
+          <small style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px; display: block;">Use your SRM NetID username (from your university email address)</small>
+        </div>
+
+        <div class="form-group">
+          <label for="inputPassword">Portal Password</label>
+          <div class="input-with-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <input type="password" id="inputPassword" placeholder="••••••••••••" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="inputCaptcha">Captcha</label>
+          <div class="captcha-row">
+            <div class="captcha-img-box" id="captchaBox">
+              <span class="captcha-loading" id="captchaLoading">Loading captcha...</span>
+              <img src="" id="captchaImg" class="captcha-img hidden" alt="Captcha">
+            </div>
+            <button type="button" class="btn btn-secondary btn-icon-only" id="btnReloadCaptcha" title="Refresh Captcha">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            </button>
+            <input type="text" id="inputCaptcha" placeholder="Captcha" class="captcha-input" maxlength="8" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" required>
+          </div>
+        </div>
+
+        <div class="alert-box alert-error hidden" id="loginAlert"></div>
+
+        <div class="modal-footer" style="justify-content: flex-end;">
+          <button type="submit" class="btn btn-primary" id="btnSubmitLogin">
+            <span class="btn-spinner hidden" id="loginSpinner"></span>
+            <span>Authenticate &amp; Fetch</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+
+
+  <!-- 3. Import / Paste Raw HTML or JSON Modal -->
+  <div class="modal-backdrop" id="importModal">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <div class="sim-badge-icon">📋</div>
+          <div>
+            <h3 class="modal-title">Import SRM Attendance Data</h3>
+            <p class="modal-subtitle">Paste your SRM portal attendance table HTML directly</p>
+          </div>
+        </div>
+        <button class="modal-close-btn" id="btnCloseImport">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <p class="import-help">
+          In your browser on <strong>sp.srmist.edu.in</strong>, navigate to <strong>Student Attendance Details</strong>, right-click the attendance table &rarr; <strong>Inspect</strong> &rarr; copy the <code>&lt;table&gt;...&lt;/table&gt;</code> HTML (or press <kbd>Ctrl+U</kbd> and copy the source) and paste it below:
+        </p>
+
+        <div class="form-group">
+          <label for="importTextarea">Paste Attendance Table HTML:</label>
+          <textarea id="importTextarea" class="code-textarea" rows="8" placeholder="<table class=&quot;table&quot;><thead><tr><th>Code</th><th>Description</th><th>Max. hours</th><th>Att. hours</th><th>Absent hours</th><th>Total Percentage</th></tr></thead>..."></textarea>
+        </div>
+
+        <div class="alert-box alert-error hidden" id="importAlert"></div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" id="btnLoadSampleData">Load Sample SRMIST Table</button>
+          <button type="button" class="btn btn-primary" id="btnParseImport">
+            <span>Parse &amp; Render Dashboard</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Secondary Absent Details Breakdown Modal (studentAttendanceDetailsInner.jsp) -->
+  <div class="modal-backdrop" id="absentDetailsModal">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <div class="sim-badge-icon">📅</div>
+          <div>
+            <h3 class="modal-title" id="absentModalTitle">Detailed Absence Breakdown</h3>
+            <p class="modal-subtitle" id="absentModalSubtitle">Hourly attendance records from studentAttendanceDetailsInner.jsp</p>
+          </div>
+        </div>
+        <button class="modal-close-btn" id="btnCloseAbsentDetails">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="absent-modal-summary" id="absentModalSummary">
+          <!-- Populated dynamically -->
+        </div>
+
+        <div class="glass-table-wrapper" style="max-height: 320px; overflow-y: auto;">
+          <table class="glass-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Day</th>
+                <th>Slot / Period</th>
+                <th>Hours Absent</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="absentDetailsTableBody">
+              <!-- Populated dynamically -->
+            </tbody>
+          </table>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="btnCloseAbsentDetailsBtn">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Portal Endpoints & Developer Setup Modal -->
+  <div class="modal-backdrop" id="settingsModal">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <div class="sim-badge-icon">⚙️</div>
+          <div>
+            <h3 class="modal-title">SRM Portal Configuration</h3>
+            <p class="modal-subtitle">Configured for sp.srmist.edu.in</p>
+          </div>
+        </div>
+        <button class="modal-close-btn" id="btnCloseSettings">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <form id="settingsForm">
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="cfgBaseUrl">Portal Base URL</label>
+              <input type="text" id="cfgBaseUrl" value="https://sp.srmist.edu.in">
+            </div>
+            <div class="form-group">
+              <label for="cfgLoginUrl">Login Servlet URL</label>
+              <input type="text" id="cfgLoginUrl" value="https://sp.srmist.edu.in/srmiststudentportal/LoginServlet">
+            </div>
+            <div class="form-group">
+              <label for="cfgAttendanceUrl">Attendance Details JSP</label>
+              <input type="text" id="cfgAttendanceUrl" value="https://sp.srmist.edu.in/srmiststudentportal/students/report/studentAttendanceDetails.jsp">
+            </div>
+            <div class="form-group">
+              <label for="cfgInnerAttendanceUrl">Secondary Details JSP (Inner)</label>
+              <input type="text" id="cfgInnerAttendanceUrl" value="https://sp.srmist.edu.in/srmiststudentportal/students/report/studentAttendanceDetailsInner.jsp">
+            </div>
+          </div>
+
+          <div class="alert-box alert-success hidden" id="settingsAlert"></div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" id="btnResetConfig">Reset to SRM Defaults</button>
+            <button type="submit" class="btn btn-primary" id="btnSaveConfig">Save Configuration</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

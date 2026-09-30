@@ -87,6 +87,7 @@
     sessionCookieForm: document.getElementById('sessionCookieForm'),
     inputNetId: document.getElementById('inputNetId'),
     inputPassword: document.getElementById('inputPassword'),
+    btnTogglePassword: document.getElementById('btnTogglePassword'),
     inputCaptcha: document.getElementById('inputCaptcha'),
     inputSessionCookie: document.getElementById('inputSessionCookie'),
     captchaImg: document.getElementById('captchaImg'),
@@ -1077,6 +1078,27 @@
     });
     elements.btnCloseLogin?.addEventListener('click', () => closeModal(elements.loginModal));
     elements.btnReloadCaptcha?.addEventListener('click', fetchCaptcha);
+
+    // Password Visibility Unhide / Hide Toggle
+    elements.btnTogglePassword?.addEventListener('click', () => {
+      if (!elements.inputPassword) return;
+      const isPassword = elements.inputPassword.type === 'password';
+      elements.inputPassword.type = isPassword ? 'text' : 'password';
+      const eyeShow = elements.btnTogglePassword.querySelector('.eye-show');
+      const eyeHide = elements.btnTogglePassword.querySelector('.eye-hide');
+      if (isPassword) {
+        eyeShow?.classList.add('hidden');
+        eyeHide?.classList.remove('hidden');
+        elements.btnTogglePassword.setAttribute('title', 'Hide password');
+        elements.btnTogglePassword.setAttribute('aria-label', 'Hide password');
+      } else {
+        eyeShow?.classList.remove('hidden');
+        eyeHide?.classList.add('hidden');
+        elements.btnTogglePassword.setAttribute('title', 'Show password');
+        elements.btnTogglePassword.setAttribute('aria-label', 'Show password');
+      }
+    });
+
     elements.srmLoginForm?.addEventListener('submit', handleLoginSubmit);
     elements.sessionCookieForm?.addEventListener('submit', handleSessionCookieSubmit);
 

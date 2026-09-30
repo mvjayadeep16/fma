@@ -1,8 +1,11 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const https = require('https');
 const axios = require('axios');
 const cheerio = require('cheerio');
+
+const httpsAgent = new https.Agent({ keepAlive: true, rejectUnauthorized: false });
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -274,11 +277,14 @@ app.get('/api/captcha', async (req, res) => {
 
     // Step 1: Request portal login page to get initial cookies and tokens
     const initRes = await axios.get(portalConfig.portalHomeUrl, {
+      httpsAgent,
       headers: {
         'User-Agent': userAgent,
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Cache-Control': 'no-cache'
       },
-      timeout: 10000
+      timeout: 15000
     });
 
     cookieJar.setFromHeaders(initRes.headers);
@@ -333,6 +339,7 @@ app.get('/api/captcha', async (req, res) => {
       const domainProof = Buffer.from(`${tokens.nonce}:${portalConfig.expectedHost}`).toString('base64');
 
       const imgRes = await axios.get(captchaUrl, {
+        httpsAgent,
         responseType: 'arraybuffer',
         headers: {
           'User-Agent': userAgent,
@@ -341,7 +348,7 @@ app.get('/api/captcha', async (req, res) => {
           'X-Domain-Proof': domainProof,
           'Accept': 'image/png, image/jpeg, image/svg+xml, image/*;q=0.9'
         },
-        timeout: 10000
+        timeout: 15000
       });
 
       // Update cookie jar with captcha servlet response (replaces TS9dec798a027 cleanly)
@@ -496,6 +503,7 @@ app.post('/api/login', async (req, res) => {
       portalConfig.loginUrl,
       new URLSearchParams(postData).toString(),
       {
+        httpsAgent,
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'User-Agent': userAgent,
@@ -506,7 +514,7 @@ app.post('/api/login', async (req, res) => {
           'Accept-Language': 'en-US,en;q=0.9'
         },
         maxRedirects: 0,
-        timeout: 15000,
+        timeout: 20000,
         validateStatus: () => true
       }
     );

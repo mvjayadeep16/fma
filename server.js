@@ -250,6 +250,18 @@ class CookieJar {
   get(name) {
     return this.cookies.get(name);
   }
+
+  toJSON() {
+    return Array.from(this.cookies.entries());
+  }
+
+  static fromJSON(entries) {
+    const jar = new CookieJar();
+    if (Array.isArray(entries)) {
+      entries.forEach(([k, v]) => jar.cookies.set(k, v));
+    }
+    return jar;
+  }
 }
 
 // 2. Fetch Live Captcha & Initialize Portal Session from sp.srmist.edu.in
@@ -340,8 +352,16 @@ app.get('/api/captcha', async (req, res) => {
       captchaDataUrl = `data:${contentType};base64,${base64Img}`;
     }
 
-    // Save active session
-    userSessions.set(sessionId, {
+    // Encode stateless session payload for serverless environments (Vercel)
+    const sessionPayload = {
+      cookies: cookieJar.toJSON(),
+      tokens,
+      time: Date.now()
+    };
+    const statelessSessionId = Buffer.from(JSON.stringify(sessionPayload)).toString('base64url');
+
+    // Save active session in memory as well
+    userSessions.set(statelessSessionId, {
       cookieJar,
       tokens,
       lastActive: Date.now()
@@ -349,7 +369,7 @@ app.get('/api/captcha', async (req, res) => {
 
     res.json({
       success: true,
-      sessionId,
+      sessionId: statelessSessionId,
       captchaDataUrl,
       tokens: {
         domainFieldName: tokens.domainFieldName,
@@ -409,6 +429,30 @@ app.post('/api/login', async (req, res) => {
   const cleanUsername = netId.trim().replace(/@srmist\.edu\.in$/i, '');
 
   let session = userSessions.get(sessionId);
+  if ((!session || !session.tokens || !session.cookieJar) && sessionId) {
+    try {
+      const decoded = JSON.parse(Buffer.from(sessionId, 'base64url').toString('utf8'));
+      if (decoded && decoded.cookies && decoded.tokens) {
+        session = {
+          cookieJar: CookieJar.fromJSON(decoded.cookies),
+          tokens: decoded.tokens,
+          lastActive: decoded.time || Date.now()
+        };
+      }
+    } catch (e) {
+      try {
+        const decoded = JSON.parse(Buffer.from(sessionId, 'base64').toString('utf8'));
+        if (decoded && decoded.cookies && decoded.tokens) {
+          session = {
+            cookieJar: CookieJar.fromJSON(decoded.cookies),
+            tokens: decoded.tokens,
+            lastActive: decoded.time || Date.now()
+          };
+        }
+      } catch (err) {}
+    }
+  }
+
   if (!session || !session.tokens || !session.cookieJar) {
     return res.status(400).json({
       success: false,
@@ -712,7 +756,19 @@ async function fetchAttendanceWithCookie(cookieInput, targetPercent = 75) {
 // studentAttendanceDetailsInner.jsp (POST: ids, attendanceMonth, attendanceYear)
 app.post('/api/absent-details', async (req, res) => {
   const { sessionId, ids, attendanceMonth, attendanceYear } = req.body;
-  const session = userSessions.get(sessionId);
+  let session = userSessions.get(sessionId);
+  if (!session && sessionId) {
+    try {
+      const decoded = JSON.parse(Buffer.from(sessionId, 'base64url').toString('utf8'));
+      if (decoded && decoded.cookies && decoded.tokens) {
+        session = {
+          cookieJar: CookieJar.fromJSON(decoded.cookies),
+          tokens: decoded.tokens,
+          lastActive: decoded.time || Date.now()
+        };
+      }
+    } catch (e) {}
+  }
 
   if (!session) {
     return res.status(400).json({ success: false, error: 'Session not found or expired.' });
@@ -1153,8 +1209,12 @@ function transformJsonAttendance(json, targetPercent = 75) {
   };
 }
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`FlashMan SRM Attendance Server running on:`);
-  console.log(`  Local:   http://localhost:${PORT}`);
-  console.log(`  Network: http://10.3.248.156:${PORT}`);
-});
+if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`FlashMan SRM Attendance Server running on:`);
+    console.log(`  Local:   http://localhost:${PORT}`);
+    console.log(`  Network: http://10.3.192.27:${PORT}`);
+  });
+}
+
+module.exports = app;

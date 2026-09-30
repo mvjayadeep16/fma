@@ -333,7 +333,7 @@
           elements.dataSourcePill.textContent = 'Live SRM Portal';
           elements.dataSourcePill.style.background = 'rgba(0, 242, 254, 0.15)';
           elements.dataSourcePill.style.color = 'var(--neon-cyan)';
-          elements.navLoginText.textContent = netId.toUpperCase();
+          elements.navLoginText.textContent = 'Logout';
           showToast('Authenticated with SRM Student Portal!', 'success');
         }
       } else {
@@ -1064,10 +1064,16 @@
       elements.infoAccordion?.classList.toggle('open');
     });
 
-    // Login Modal & Tabs
+    // Logout Action
     elements.btnOpenLogin?.addEventListener('click', () => {
+      state.activeData = null;
+      document.getElementById('mainDashboard')?.classList.add('hidden');
+      elements.btnOpenLogin?.classList.add('hidden');
+      elements.inputPassword.value = '';
+      elements.inputCaptcha.value = '';
       openModal(elements.loginModal);
       fetchCaptcha();
+      showToast('Logged out successfully', 'info');
     });
     elements.btnCloseLogin?.addEventListener('click', () => closeModal(elements.loginModal));
     elements.btnReloadCaptcha?.addEventListener('click', fetchCaptcha);

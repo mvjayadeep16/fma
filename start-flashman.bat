@@ -6,8 +6,7 @@ echo ========================================================
 echo.
 echo Starting FlashMan Server...
 echo.
-echo Local URL:   http://localhost:3000
-echo Network URL: http://10.3.31.91:3000
+echo Local URL: http://localhost:3000
 echo.
 echo Press Ctrl+C in this window to stop the server.
 echo ========================================================

@@ -319,22 +319,12 @@
       elements.loginSpinner.classList.add('hidden');
 
       if (result.success && result.data) {
-        state.activeData = result.data;
-        document.getElementById('mainDashboard')?.classList.remove('hidden');
-        document.getElementById('navTargetSelector')?.classList.remove('hidden');
-        document.getElementById('btnOpenSettings')?.classList.remove('hidden');
-        elements.btnOpenLogin?.classList.remove('hidden');
-        closeModal(elements.loginModal, true);
-        renderDashboard();
+        const sourceLabel = result.isDemo ? 'SRM Demo Profile' : 'Live SRM Portal';
+        applyActiveSession(result.data, sourceLabel, !!result.isDemo, true, result.sessionId);
 
         if (result.isDemo) {
-          elements.dataSourcePill.textContent = 'SRM Demo Profile';
           showToast('Loaded SRM Demo Profile!', 'success');
         } else {
-          elements.dataSourcePill.textContent = 'Live SRM Portal';
-          elements.dataSourcePill.style.background = 'rgba(0, 242, 254, 0.15)';
-          elements.dataSourcePill.style.color = 'var(--neon-cyan)';
-          elements.navLoginText.textContent = 'Logout';
           showToast('Authenticated with SRM Student Portal!', 'success');
         }
       } else {
@@ -374,10 +364,7 @@
 
       const result = await res.json();
       if (result.success && result.data) {
-        state.activeData = result.data;
-        closeModal(elements.loginModal);
-        renderDashboard();
-        elements.dataSourcePill.textContent = 'Live Session Synced';
+        applyActiveSession(result.data, 'Live Session Synced', false, true, result.sessionId);
         showToast('Attendance synced successfully via Session Cookie!', 'success');
       } else {
         elements.cookieAlert.textContent = result.error || 'Failed to sync with provided cookie. It may be expired.';
@@ -387,6 +374,87 @@
       elements.cookieAlert.textContent = 'Network error while contacting portal.';
       elements.cookieAlert.classList.remove('hidden');
     }
+  }
+
+  function applyActiveSession(data, sourceLabel = 'Live SRM Portal', isDemo = false, persist = true, newSessionId = null) {
+    if (!data) return;
+    state.activeData = data;
+    if (newSessionId) {
+      state.sessionId = newSessionId;
+    }
+
+    if (persist) {
+      try {
+        localStorage.setItem('flashman_active_data', JSON.stringify(data));
+        localStorage.setItem('flashman_data_source', sourceLabel);
+        localStorage.setItem('flashman_is_demo', isDemo ? '1' : '0');
+        if (state.sessionId) {
+          localStorage.setItem('flashman_session_id', state.sessionId);
+        }
+        localStorage.setItem('flashman_target_percent', String(state.targetPercent));
+        const timeNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+        localStorage.setItem('flashman_last_sync', timeNow);
+      } catch (err) {
+        console.warn('Could not persist session to localStorage', err);
+      }
+    }
+
+    // Unhide dashboard and nav controls
+    document.getElementById('mainDashboard')?.classList.remove('hidden');
+    document.getElementById('navTargetSelector')?.classList.remove('hidden');
+    document.getElementById('btnOpenSettings')?.classList.remove('hidden');
+    elements.btnOpenLogin?.classList.remove('hidden');
+
+    if (elements.navLoginText) {
+      elements.navLoginText.textContent = 'Logout';
+    }
+
+    if (elements.dataSourcePill) {
+      elements.dataSourcePill.textContent = sourceLabel;
+      if (sourceLabel.includes('Live') || !isDemo) {
+        elements.dataSourcePill.style.background = 'rgba(0, 242, 254, 0.15)';
+        elements.dataSourcePill.style.color = 'var(--neon-cyan)';
+      } else {
+        elements.dataSourcePill.style.background = '';
+        elements.dataSourcePill.style.color = '';
+      }
+    }
+
+    const savedLastSync = localStorage.getItem('flashman_last_sync');
+    if (savedLastSync && elements.lastSyncTime) {
+      elements.lastSyncTime.textContent = `Last sync: Today at ${savedLastSync}`;
+    }
+
+    closeModal(elements.loginModal, true);
+    closeModal(elements.importModal);
+    renderDashboard();
+  }
+
+  function handleLogout() {
+    state.activeData = null;
+    state.sessionId = null;
+    try {
+      localStorage.removeItem('flashman_active_data');
+      localStorage.removeItem('flashman_data_source');
+      localStorage.removeItem('flashman_is_demo');
+      localStorage.removeItem('flashman_session_id');
+      localStorage.removeItem('flashman_last_sync');
+    } catch (e) {
+      console.warn('Error clearing localStorage', e);
+    }
+
+    document.getElementById('mainDashboard')?.classList.add('hidden');
+    document.getElementById('navTargetSelector')?.classList.add('hidden');
+    document.getElementById('btnOpenSettings')?.classList.add('hidden');
+    elements.btnOpenLogin?.classList.add('hidden');
+
+    if (elements.inputPassword) elements.inputPassword.value = '';
+    if (elements.inputCaptcha) elements.inputCaptcha.value = '';
+    if (elements.loginAlert) elements.loginAlert.classList.add('hidden');
+
+    openModal(elements.loginModal);
+    fetchCaptcha();
+    showToast('Logged out successfully', 'info');
   }
 
   function showLoginAlert(msg) {
@@ -421,10 +489,7 @@
 
       const result = await res.json();
       if (result.success && result.data) {
-        state.activeData = result.data;
-        closeModal(elements.importModal);
-        renderDashboard();
-        elements.dataSourcePill.textContent = 'Imported SRM Data';
+        applyActiveSession(result.data, 'Imported SRM Data', false, true);
         showToast(`Successfully parsed ${result.data.courses.length} courses!`, 'success');
       } else {
         elements.importAlert.textContent = result.error || 'Could not parse attendance format.';
@@ -759,7 +824,40 @@
       elements.absentDetailsTableBody.innerHTML = `
         <tr><td colspan="5" style="text-align: center; padding: 2rem; color: var(--color-safe);">🎉 100% Attendance! No absences recorded for this course.</td></tr>
       `;
-    } else {
+      openModal(elements.absentDetailsModal);
+      return;
+    }
+
+    let fetched = false;
+    if (state.sessionId && !localStorage.getItem('flashman_is_demo')) {
+      try {
+        const res = await fetch('/api/absent-details', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: state.sessionId,
+            ids: course.code
+          })
+        });
+        const json = await res.json();
+        if (json.success && Array.isArray(json.records) && json.records.length > 0) {
+          json.records.forEach(rec => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+              <td><strong>${rec[0] || 'Recent'}</strong></td>
+              <td>${rec[1] || 'Weekday'}</td>
+              <td><span class="badge-slot">${rec[2] || 'Regular Slot'}</span></td>
+              <td style="color: var(--color-danger); font-weight: 700;">${rec[3] || '1 hr'}</td>
+              <td><span class="table-margin-badge critical">${rec[4] || 'Absent'}</span></td>
+            `;
+            elements.absentDetailsTableBody.appendChild(row);
+          });
+          fetched = true;
+        }
+      } catch (e) {}
+    }
+
+    if (!fetched) {
       // Generate realistic SRM class absence records matching studentAttendanceDetailsInner.jsp
       const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
       for (let i = 1; i <= course.absent; i++) {
@@ -911,29 +1009,10 @@
 
   async function handleSaveConfig(e) {
     e.preventDefault();
-    const configData = {
-      baseUrl: elements.cfgBaseUrl.value.trim(),
-      loginUrl: elements.cfgLoginUrl.value.trim(),
-      attendanceUrl: elements.cfgAttendanceUrl.value.trim(),
-      innerAttendanceUrl: elements.cfgInnerAttendanceUrl.value.trim()
-    };
-
-    try {
-      const res = await fetch('/api/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(configData)
-      });
-      const result = await res.json();
-      if (result.success) {
-        elements.settingsAlert.textContent = 'Configuration saved successfully!';
-        elements.settingsAlert.classList.remove('hidden');
-        showToast('Settings updated', 'success');
-        setTimeout(() => elements.settingsAlert.classList.add('hidden'), 3000);
-      }
-    } catch (e) {
-      showToast('Error saving settings', 'error');
-    }
+    elements.settingsAlert.textContent = 'Portal endpoints are secure constants and managed automatically by FlashMan.';
+    elements.settingsAlert.classList.remove('hidden');
+    showToast('Settings verified', 'info');
+    setTimeout(() => elements.settingsAlert.classList.add('hidden'), 3000);
   }
 
   /* =========================================================
@@ -987,18 +1066,32 @@
         elements.targetButtons.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         state.targetPercent = parseInt(btn.dataset.target, 10);
-        recalculateAllData(state.activeData, state.targetPercent);
-        renderDashboard();
-        updateSimulatorDisplay();
+        localStorage.setItem('flashman_target_percent', String(state.targetPercent));
+        if (state.activeData) {
+          recalculateAllData(state.activeData, state.targetPercent);
+          try {
+            localStorage.setItem('flashman_active_data', JSON.stringify(state.activeData));
+          } catch (e) {}
+          renderDashboard();
+          updateSimulatorDisplay();
+        }
         showToast(`Target updated to ${state.targetPercent}%`, 'info');
       });
     });
 
     // Quick Refresh
-    elements.btnQuickRefresh.addEventListener('click', () => {
-      recalculateAllData(state.activeData, state.targetPercent);
-      renderDashboard();
-      showToast('Dashboard reloaded', 'success');
+    elements.btnQuickRefresh?.addEventListener('click', () => {
+      if (state.activeData) {
+        recalculateAllData(state.activeData, state.targetPercent);
+        renderDashboard();
+        const timeNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+        localStorage.setItem('flashman_last_sync', timeNow);
+        if (elements.lastSyncTime) elements.lastSyncTime.textContent = `Last sync: Today at ${timeNow}`;
+        try {
+          localStorage.setItem('flashman_active_data', JSON.stringify(state.activeData));
+        } catch (e) {}
+        showToast('Dashboard reloaded', 'success');
+      }
     });
 
     // Search Box
@@ -1066,16 +1159,7 @@
     });
 
     // Logout Action
-    elements.btnOpenLogin?.addEventListener('click', () => {
-      state.activeData = null;
-      document.getElementById('mainDashboard')?.classList.add('hidden');
-      elements.btnOpenLogin?.classList.add('hidden');
-      elements.inputPassword.value = '';
-      elements.inputCaptcha.value = '';
-      openModal(elements.loginModal);
-      fetchCaptcha();
-      showToast('Logged out successfully', 'info');
-    });
+    elements.btnOpenLogin?.addEventListener('click', handleLogout);
     elements.btnCloseLogin?.addEventListener('click', () => closeModal(elements.loginModal));
     elements.btnReloadCaptcha?.addEventListener('click', fetchCaptcha);
 
@@ -1285,8 +1369,8 @@
   function loadFallbackMockData() {
     const sample = {
       student: {
-        name: 'MADDIPATLA VENKATA JAYADEEP',
-        regNo: 'RA2511026010556',
+        name: 'Demo Student',
+        regNo: 'RA0000000000000',
         program: 'B.Tech - Computer Science & Engineering (AI & ML)',
         semester: 'Semester 3 (Section Y1)',
         campus: 'KTR Main Campus, SRMIST'
@@ -1302,8 +1386,7 @@
       ]
     };
     recalculateAllData(sample, state.targetPercent);
-    state.activeData = sample;
-    renderDashboard();
+    applyActiveSession(sample, 'SRM Demo Profile', true, true);
   }
 
   function init() {
@@ -1311,10 +1394,50 @@
       document.body.className = 'light-theme';
       elements.themeToggleBtn.querySelector('.theme-icon').textContent = '☀️';
     }
+
+    // Restore saved target percentage
+    const savedTarget = localStorage.getItem('flashman_target_percent');
+    if (savedTarget) {
+      const parsedTarget = parseInt(savedTarget, 10);
+      if (!isNaN(parsedTarget)) {
+        state.targetPercent = parsedTarget;
+        elements.targetButtons?.forEach(btn => {
+          if (parseInt(btn.dataset.target, 10) === parsedTarget) {
+            btn.classList.add('active');
+          } else {
+            btn.classList.remove('active');
+          }
+        });
+      }
+    }
+
     setupEventListeners();
-    // Directly launch login modal and fetch live captcha on site open
-    openModal(elements.loginModal);
-    fetchCaptcha();
+
+    // Check if user is already logged in / has active data stored
+    let restored = false;
+    try {
+      const savedDataStr = localStorage.getItem('flashman_active_data');
+      if (savedDataStr) {
+        const savedData = JSON.parse(savedDataStr);
+        if (savedData && (savedData.courses || savedData.student)) {
+          const savedSource = localStorage.getItem('flashman_data_source') || 'Live SRM Portal';
+          const isDemo = localStorage.getItem('flashman_is_demo') === '1';
+          state.sessionId = localStorage.getItem('flashman_session_id') || null;
+
+          recalculateAllData(savedData, state.targetPercent);
+          applyActiveSession(savedData, savedSource, isDemo, false);
+          restored = true;
+        }
+      }
+    } catch (e) {
+      console.warn('Could not restore session from storage', e);
+    }
+
+    if (!restored) {
+      // User is not logged in: directly launch login modal and fetch live captcha
+      openModal(elements.loginModal);
+      fetchCaptcha();
+    }
   }
 
   init();

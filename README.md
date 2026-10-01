@@ -21,7 +21,8 @@ A modern, high-aesthetic attendance dashboard and bunk margin calculator enginee
    - See projected percentages, margin delta, and safety warnings instantly.
 
 4. **Multiple Ingestion Methods**:
-   - **Live SRM Portal Login**: Local proxy handles captcha relay and session cookies.
+   - **Live SRM Portal Login**: Proxy handles captcha relay and session cookies.
+   - **Session Cookie Sync**: Paste your `JSESSIONID` directly from a logged-in tab.
    - **Direct HTML / Table Paste**: Copy the table from your browser and paste it directly.
    - **Demo Profile**: Preloaded with authentic SRM courses (DSA, OS, DBMS, Mathematics, Labs) for instant demonstration.
 
@@ -30,6 +31,18 @@ A modern, high-aesthetic attendance dashboard and bunk margin calculator enginee
 
 6. **Ultra-Modern Glassmorphic UI**:
    - Obsidian dark theme with neon cyan & amber accents, ambient glow orbs, circular SVG progress meters, card & table view toggle, real-time course search, and filter pills.
+
+---
+
+## ⚠️ Important Note on Cloud Hosting & Live SRM Login
+
+> [!NOTE]
+> The live SRM Student Portal (`sp.srmist.edu.in`) employs firewall protections and IP blocking that frequently reject or time out requests coming from cloud/datacenter IP ranges (such as AWS, Vercel, Render, or DigitalOcean).
+> 
+> **Recommended Fallbacks on Cloud Deployments:**
+> - **Import / Paste HTML**: In your SRM portal tab, press `Ctrl+U` (or right-click table -> Inspect), copy the `<table>...</table>`, and paste it into FlashMan's **Import** modal.
+> - **Session Cookie Sync**: Copy the `JSESSIONID` cookie from your logged-in browser session and sync instantly.
+> - **Demo Mode**: Test all analytics, margin formulas, and simulators using the built-in SRM Demo Profile.
 
 ---
 
@@ -50,28 +63,66 @@ http://localhost:3000
 
 ---
 
-## 🔍 How to Find Your SRM Portal Network & Fetching Details
+## 🌐 Deploying to Vercel
 
-When logging into your student portal (e.g. `academia.srmist.edu.in` or `evarsity.srmist.edu.in`), here is how to capture the exact fetching details:
+FlashMan is configured out-of-the-box for serverless deployment on **Vercel** with stateless session support and optimized timeouts.
 
-### Step 1: Open Developer Tools
-1. In Google Chrome or Microsoft Edge, open the SRM student portal.
-2. Press `F12` (or right-click anywhere and click **Inspect**).
-3. Switch to the **Network** tab at the top.
-4. Check the **Preserve log** checkbox.
+1. Install the Vercel CLI (or connect your GitHub repository to [Vercel Dashboard](https://vercel.com)):
+   ```bash
+   npm i -g vercel
+   ```
+2. Deploy directly from the project directory:
+   ```bash
+   vercel
+   ```
+3. For production deployment:
+   ```bash
+   vercel --prod
+   ```
 
-### Step 2: Capture Login & Captcha Details
-1. Type your Net ID, Password, and Captcha, then click **Login**.
-2. In the Network tab filter box, type `fetch` or `xhr`, or look for the login request (often named `liveauth.php`, `signin.ac`, or `login`).
-3. Click on the request and check:
-   - **Request URL**: The full URL (e.g., `https://academia.srmist.edu.in/...`)
-   - **Request Method**: `POST`
-   - **Payload / Form Data**: Look at the keys (e.g. `txtusername`, `txtpassword`, `captcha`).
-   - **Captcha URL**: In the Elements or Network tab, find the image URL for the captcha image (e.g., `/captcha` or `/login/captcha.do`).
+**Configuration Details (`vercel.json`)**:
+- Uses modern `rewrites` to route `/api/(.*)` to `/api/index.js`.
+- Configures serverless functions with `maxDuration: 30` (maximum supported on the Free Hobby plan).
+- Deploys to the `bom1` (Mumbai, India) region for lowest latency to SRM servers.
 
-### Step 3: Capture Attendance Page Details
-1. Once logged in, click on the **Attendance** navigation menu item.
-2. In the Network tab, look for the request that loads the attendance table or JSON data.
-3. Right-click that request:
-   - Click **Copy** -> **Copy as cURL (bash)** or **Copy response**.
-   - Alternatively, right click on the attendance page -> **View Page Source**, find the `<table>...</table>` containing your courses, and copy it!
+---
+
+## ☁️ Deploying to Render
+
+FlashMan includes a `render.yaml` Blueprint for 1-click deployment on **Render's Free Web Service**:
+
+1. Push this repository to GitHub or GitLab.
+2. In the [Render Dashboard](https://dashboard.render.com/), click **New** &rarr; **Blueprint** (or **Web Service**).
+3. Connect your repository. Render will automatically detect `render.yaml` with:
+   - **Environment**: Node
+   - **Plan**: Free
+   - **Region**: Singapore (`singapore`)
+   - **Health Check Path**: `/api/health`
+   - **Build Command**: `npm install`
+   - **Start Command**: `npm start`
+
+---
+
+## 🩺 Diagnostics API (`/api/health`)
+
+FlashMan includes a diagnostic health check endpoint at `/api/health` to test connectivity between the server and the SRM portal:
+
+```bash
+curl https://your-deployed-domain.com/api/health
+```
+
+Example response:
+```json
+{
+  "success": true,
+  "status": "ok",
+  "portal": {
+    "url": "https://sp.srmist.edu.in/srmiststudentportal/",
+    "httpStatus": 200,
+    "responseTimeMs": 312,
+    "captchaFound": true,
+    "accessible": true
+  },
+  "serverTime": "2026-10-01T14:30:00.000Z"
+}
+```

@@ -297,8 +297,11 @@ function decodeSession(sessionId) {
   return null;
 }
 
+// Express Router to handle API routes cleanly under both /api and /
+const apiRouter = express.Router();
+
 // 1. Get Portal Configuration (Read-only, non-sensitive)
-app.get('/api/config', (req, res) => {
+apiRouter.get('/config', (req, res) => {
   res.json({
     success: true,
     config: {
@@ -311,7 +314,7 @@ app.get('/api/config', (req, res) => {
 });
 
 // 2. Health & Diagnostics Route
-app.get('/api/health', async (req, res) => {
+apiRouter.get('/health', async (req, res) => {
   const startTime = Date.now();
   const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
@@ -366,13 +369,13 @@ app.get('/api/health', async (req, res) => {
 });
 
 // 3. Fetch Live Captcha & Initialize Portal Session from sp.srmist.edu.in
-app.get('/api/captcha', async (req, res) => {
+apiRouter.get('/captcha', async (req, res) => {
   const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
   try {
     const cookieJar = new CookieJar();
 
-    // Step 1: Request portal login page to get initial cookies and tokens
+    // Request portal login page to get initial cookies and tokens
     const initRes = await axios.get(PORTAL_CONFIG.portalHomeUrl, {
       httpsAgent,
       headers: {
@@ -489,7 +492,7 @@ app.get('/api/captcha', async (req, res) => {
 });
 
 // 4. Authenticate with SRM Portal LoginServlet
-app.post('/api/login', async (req, res) => {
+apiRouter.post('/login', async (req, res) => {
   const { sessionId, netId, password, captcha, sessionCookie, targetPercent = 75 } = req.body;
 
   // Demo mode
@@ -544,7 +547,7 @@ app.post('/api/login', async (req, res) => {
   if (!session || !session.tokens || !session.cookieJar) {
     return res.status(400).json({
       success: false,
-      error: 'Session expired. Please click the refresh icon next to Captcha and try again.'
+      error: 'Session expired or not initialized. Please enter credentials or use Session Cookie sync / Demo mode.'
     });
   }
 
@@ -664,6 +667,142 @@ app.post('/api/login', async (req, res) => {
     });
   }
 });
+
+// 5. Secondary Absent-Details Request
+apiRouter.post('/absent-details', async (req, res) => {
+  const { sessionId, ids, attendanceMonth, attendanceYear } = req.body;
+  const session = decodeSession(sessionId);
+
+  if (!session || !session.cookieJar) {
+    return res.status(400).json({
+      success: false,
+      error: 'Session not found or expired. Please re-authenticate.',
+      message: 'The SRM portal session was not found. Please log in again.'
+    });
+  }
+
+  try {
+    const postData = {
+      ids: ids || '',
+      attendanceMonth: attendanceMonth || String(new Date().getMonth() + 1),
+      attendanceYear: attendanceYear || String(new Date().getFullYear())
+    };
+
+    const cookieHeader = session.cookieJar.getCookieHeader();
+
+    const detailRes = await axios.post(
+      PORTAL_CONFIG.innerAttendanceUrl,
+      new URLSearchParams(postData).toString(),
+      {
+        httpsAgent,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Referer': PORTAL_CONFIG.attendanceUrl,
+          'Cookie': cookieHeader
+        },
+        timeout: 10000,
+        validateStatus: () => true
+      }
+    );
+
+    if (detailRes.status !== 200) {
+      return res.status(detailRes.status || 500).json({
+        success: false,
+        error: 'The SRM portal blocked or did not respond to this server. Use the Paste HTML or Session Cookie option instead.'
+      });
+    }
+
+    const $ = cheerio.load(detailRes.data);
+    const records = [];
+
+    $('table tr').each((_, tr) => {
+      const cells = $(tr).find('td');
+      if (cells.length >= 2) {
+        records.push(cells.map((_, c) => $(c).text().trim()).get());
+      }
+    });
+
+    return res.json({
+      success: true,
+      html: detailRes.data,
+      records
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      error: 'The SRM portal blocked or did not respond to this server. Use the Paste HTML or Session Cookie option instead.',
+      message: err.message
+    });
+  }
+});
+
+// 6. Universal HTML Table / Content Parser
+apiRouter.post('/parse', (req, res) => {
+  const { html, targetPercent = 75 } = req.body;
+  if (!html || !html.trim()) {
+    return res.status(400).json({ success: false, error: 'No HTML content provided to parse.' });
+  }
+
+  try {
+    const parsedData = parseAttendanceContent(html, targetPercent);
+    return res.json({ success: true, data: parsedData });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      error: err.message || 'Could not parse attendance HTML format.',
+      message: 'The SRM portal blocked or did not respond to this server. Use the Paste HTML or Session Cookie option instead.'
+    });
+  }
+});
+
+// 7. Direct Profile Parser endpoint
+apiRouter.post('/profile', (req, res) => {
+  const { html } = req.body;
+  if (!html) return res.status(400).json({ success: false, error: 'No profile HTML provided.' });
+  const profile = parseStudentProfile(html);
+  return res.json({ success: !!profile, profile: profile || {} });
+});
+
+// 8. Proxy student avatar photos
+apiRouter.get('/photo', async (req, res) => {
+  const { url } = req.query;
+  if (!url) return res.status(400).json({ success: false, error: 'No url provided' });
+
+  try {
+    const imgRes = await axios.get(url, {
+      httpsAgent,
+      responseType: 'arraybuffer',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': 'https://sp.srmist.edu.in/srmiststudentportal/students/template/HRDSystem.jsp'
+      },
+      timeout: 10000,
+      validateStatus: () => true
+    });
+
+    if (imgRes.status !== 200) {
+      return res.status(404).json({ success: false, error: 'Photo unavailable' });
+    }
+
+    res.set('Content-Type', imgRes.headers['content-type'] || 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=86400');
+    return res.send(imgRes.data);
+  } catch (e) {
+    return res.status(404).json({ success: false, error: 'Photo unavailable' });
+  }
+});
+
+// 9. Get Demo Profile
+apiRouter.get('/demo', (req, res) => {
+  const targetPercent = Number(req.query.target) || 75;
+  const data = recalculateMockData(targetPercent);
+  return res.json({ success: true, data });
+});
+
+// Mount router on both /api and / to ensure seamless compatibility with Vercel rewrites
+app.use('/api', apiRouter);
+app.use('/', apiRouter);
 
 // Dynamic Student Profile Parser
 function parseStudentProfile(html) {
@@ -842,138 +981,6 @@ async function fetchAttendanceWithCookie(cookieInput, targetPercent = 75) {
 
   return parseAttendanceContent(attRes.data, targetPercent, dynamicProfile);
 }
-
-// 5. Secondary Absent-Details Request
-app.post('/api/absent-details', async (req, res) => {
-  const { sessionId, ids, attendanceMonth, attendanceYear } = req.body;
-  const session = decodeSession(sessionId);
-
-  if (!session || !session.cookieJar) {
-    return res.status(400).json({
-      success: false,
-      error: 'Session not found or expired. Please re-authenticate.',
-      message: 'The SRM portal session was not found. Please log in again.'
-    });
-  }
-
-  try {
-    const postData = {
-      ids: ids || '',
-      attendanceMonth: attendanceMonth || String(new Date().getMonth() + 1),
-      attendanceYear: attendanceYear || String(new Date().getFullYear())
-    };
-
-    const cookieHeader = session.cookieJar.getCookieHeader();
-
-    const detailRes = await axios.post(
-      PORTAL_CONFIG.innerAttendanceUrl,
-      new URLSearchParams(postData).toString(),
-      {
-        httpsAgent,
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Referer': PORTAL_CONFIG.attendanceUrl,
-          'Cookie': cookieHeader
-        },
-        timeout: 10000,
-        validateStatus: () => true
-      }
-    );
-
-    if (detailRes.status !== 200) {
-      return res.status(detailRes.status || 500).json({
-        success: false,
-        error: 'The SRM portal blocked or did not respond to this server. Use the Paste HTML or Session Cookie option instead.'
-      });
-    }
-
-    const $ = cheerio.load(detailRes.data);
-    const records = [];
-
-    $('table tr').each((_, tr) => {
-      const cells = $(tr).find('td');
-      if (cells.length >= 2) {
-        records.push(cells.map((_, c) => $(c).text().trim()).get());
-      }
-    });
-
-    return res.json({
-      success: true,
-      html: detailRes.data,
-      records
-    });
-  } catch (err) {
-    return res.status(500).json({
-      success: false,
-      error: 'The SRM portal blocked or did not respond to this server. Use the Paste HTML or Session Cookie option instead.',
-      message: err.message
-    });
-  }
-});
-
-// 6. Universal HTML Table / Content Parser
-app.post('/api/parse', (req, res) => {
-  const { html, targetPercent = 75 } = req.body;
-  if (!html || !html.trim()) {
-    return res.status(400).json({ success: false, error: 'No HTML content provided to parse.' });
-  }
-
-  try {
-    const parsedData = parseAttendanceContent(html, targetPercent);
-    return res.json({ success: true, data: parsedData });
-  } catch (err) {
-    return res.status(500).json({
-      success: false,
-      error: err.message || 'Could not parse attendance HTML format.',
-      message: 'The SRM portal blocked or did not respond to this server. Use the Paste HTML or Session Cookie option instead.'
-    });
-  }
-});
-
-// 7. Direct Profile Parser endpoint
-app.post('/api/profile', (req, res) => {
-  const { html } = req.body;
-  if (!html) return res.status(400).json({ success: false, error: 'No profile HTML provided.' });
-  const profile = parseStudentProfile(html);
-  return res.json({ success: !!profile, profile: profile || {} });
-});
-
-// 8. Proxy student avatar photos
-app.get('/api/photo', async (req, res) => {
-  const { url } = req.query;
-  if (!url) return res.status(400).json({ success: false, error: 'No url provided' });
-
-  try {
-    const imgRes = await axios.get(url, {
-      httpsAgent,
-      responseType: 'arraybuffer',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Referer': 'https://sp.srmist.edu.in/srmiststudentportal/students/template/HRDSystem.jsp'
-      },
-      timeout: 10000,
-      validateStatus: () => true
-    });
-
-    if (imgRes.status !== 200) {
-      return res.status(404).json({ success: false, error: 'Photo unavailable' });
-    }
-
-    res.set('Content-Type', imgRes.headers['content-type'] || 'image/jpeg');
-    res.set('Cache-Control', 'public, max-age=86400');
-    return res.send(imgRes.data);
-  } catch (e) {
-    return res.status(404).json({ success: false, error: 'Photo unavailable' });
-  }
-});
-
-// 9. Get Demo Profile
-app.get('/api/demo', (req, res) => {
-  const targetPercent = Number(req.query.target) || 75;
-  const data = recalculateMockData(targetPercent);
-  return res.json({ success: true, data });
-});
 
 // Robust Parser for SRMIST Attendance Tables
 function parseAttendanceContent(content, targetPercent = 75, dynamicProfile = null) {

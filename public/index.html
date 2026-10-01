@@ -104,7 +104,7 @@
         </div>
       </div>
 
-      <!-- 2. Safe Bunk Margin Card (Crucial User Requirement) -->
+      <!-- 2. Safe Bunk Margin Card -->
       <div class="stat-card stat-card-margin" id="marginSummaryCard">
         <div class="card-icon-tag margin-icon">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
@@ -205,6 +205,12 @@
         </div>
       </div>
 
+      <!-- Modal Tabs -->
+      <div class="login-tabs">
+        <button type="button" class="login-tab-btn active" id="tabBtnCredentials">Live NetID</button>
+        <button type="button" class="login-tab-btn" id="tabBtnSessionCookie">Session Cookie</button>
+      </div>
+
       <!-- Live Credentials Login Form -->
       <form id="srmLoginForm" class="modal-body">
         <div class="form-group">
@@ -222,7 +228,7 @@
             <svg class="input-lead-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             <input type="password" id="inputPassword" placeholder="••••••••••••" required>
             <button type="button" class="btn-toggle-password" id="btnTogglePassword" title="Show or hide password" aria-label="Toggle password visibility">
-              <svg class="eye-show" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg class="eye-show" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
               <svg class="eye-hide hidden" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
             </button>
           </div>
@@ -238,23 +244,51 @@
             <button type="button" class="btn btn-secondary btn-icon-only" id="btnReloadCaptcha" title="Refresh Captcha">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
             </button>
-            <input type="text" id="inputCaptcha" placeholder="Captcha" class="captcha-input" maxlength="8" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" required>
+            <input type="text" id="inputCaptcha" placeholder="Captcha" class="captcha-input" maxlength="8" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">
           </div>
         </div>
 
         <div class="alert-box alert-error hidden" id="loginAlert"></div>
 
-        <div class="modal-footer" style="justify-content: flex-end;">
+        <div class="modal-footer" style="justify-content: space-between; align-items: center;">
+          <button type="button" class="btn btn-ghost btn-sm" id="btnUseDemoProfile" title="Preview dashboard with authentic SRM demo courses">
+            ⚡ Try Demo Mode
+          </button>
           <button type="submit" class="btn btn-primary" id="btnSubmitLogin">
             <span class="btn-spinner hidden" id="loginSpinner"></span>
             <span>Authenticate &amp; Fetch</span>
           </button>
         </div>
       </form>
+
+      <!-- Session Cookie Login Form -->
+      <form id="sessionCookieForm" class="modal-body hidden">
+        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1rem; line-height: 1.5;">
+          Direct cloud proxy to SRM can be restricted by campus firewalls. If Live NetID login times out, sync your attendance instantly using your active <code>JSESSIONID</code> session cookie.
+        </p>
+
+        <div class="form-group">
+          <label for="inputSessionCookie">JSESSIONID Cookie Value</label>
+          <div class="input-with-icon">
+            <svg class="input-lead-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <input type="text" id="inputSessionCookie" placeholder="e.g. 8A3F192BC7234..." required>
+          </div>
+          <small style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px; display: block;">Open SRM Portal in browser &rarr; <kbd>F12</kbd> &rarr; Application &rarr; Cookies &rarr; copy <code>JSESSIONID</code></small>
+        </div>
+
+        <div class="alert-box alert-error hidden" id="cookieAlert"></div>
+
+        <div class="modal-footer" style="justify-content: space-between; align-items: center;">
+          <button type="button" class="btn btn-ghost btn-sm" id="btnSwitchToCreds">
+            &larr; Back to NetID
+          </button>
+          <button type="submit" class="btn btn-primary" id="btnSubmitCookie">
+            <span>Sync Attendance</span>
+          </button>
+        </div>
+      </form>
     </div>
   </div>
-
-
 
   <!-- 3. Import / Paste Raw HTML or JSON Modal -->
   <div class="modal-backdrop" id="importModal">
@@ -354,19 +388,19 @@
           <div class="form-grid">
             <div class="form-group">
               <label for="cfgBaseUrl">Portal Base URL</label>
-              <input type="text" id="cfgBaseUrl" value="https://sp.srmist.edu.in">
+              <input type="text" id="cfgBaseUrl" value="https://sp.srmist.edu.in" readonly>
             </div>
             <div class="form-group">
               <label for="cfgLoginUrl">Login Servlet URL</label>
-              <input type="text" id="cfgLoginUrl" value="https://sp.srmist.edu.in/srmiststudentportal/LoginServlet">
+              <input type="text" id="cfgLoginUrl" value="https://sp.srmist.edu.in/srmiststudentportal/LoginServlet" readonly>
             </div>
             <div class="form-group">
               <label for="cfgAttendanceUrl">Attendance Details JSP</label>
-              <input type="text" id="cfgAttendanceUrl" value="https://sp.srmist.edu.in/srmiststudentportal/students/report/studentAttendanceDetails.jsp">
+              <input type="text" id="cfgAttendanceUrl" value="https://sp.srmist.edu.in/srmiststudentportal/students/report/studentAttendanceDetails.jsp" readonly>
             </div>
             <div class="form-group">
               <label for="cfgInnerAttendanceUrl">Secondary Details JSP (Inner)</label>
-              <input type="text" id="cfgInnerAttendanceUrl" value="https://sp.srmist.edu.in/srmiststudentportal/students/report/studentAttendanceDetailsInner.jsp">
+              <input type="text" id="cfgInnerAttendanceUrl" value="https://sp.srmist.edu.in/srmiststudentportal/students/report/studentAttendanceDetailsInner.jsp" readonly>
             </div>
           </div>
 

@@ -78,7 +78,7 @@ function calculateAttendanceMetrics(attended, conducted, targetPercent = 75) {
   };
 }
 
-// Generate Realistic Telemetry Payload required by sp.srmist.edu.in secure2.js
+// Generate Exact Minified Telemetry Payload required by sp.srmist.edu.in secure2.js
 function generateTelemetryPayload(startTime) {
   const now = Date.now();
   const timeOnPage = Math.max(3000, now - startTime);
@@ -86,28 +86,21 @@ function generateTelemetryPayload(startTime) {
   const moves = Math.floor(Math.random() * 25) + 12;
   const keys = Math.floor(Math.random() * 10) + 8;
 
+  // SRM secure2.js expects minified keys:
+  // E: currentDomain, D: timezoneOffset, C: screenWidth, B: screenHeight,
+  // z: mouseClicks, y: mouseMovements, x: keystrokeCount, w: typingSpeedMs,
+  // v: touchSupport, u: canvasHash
   const telemetry = {
-    startTime: startTime,
-    currentDomain: PORTAL_CONFIG.expectedHost,
-    timezoneOffset: -330, // Indian Standard Time (IST) offset
-    screenWidth: 1920,
-    screenHeight: 1080,
-    colorDepth: 24,
-    devicePixelRatio: 1,
-    platform: 'Win32',
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    language: 'en-US',
-    hardwareConcurrency: 8,
-    deviceMemory: 8,
-    touchSupport: false,
-    webdriver: false,
-    mouseClicks: clicks,
-    mouseMovements: moves,
-    keystrokeCount: keys,
-    typingSpeedMs: Math.floor(timeOnPage * 0.4),
-    canvasHash: '9a7b2c4e',
-    submitTime: now,
-    timeOnPageMs: timeOnPage
+    E: PORTAL_CONFIG.expectedHost,
+    D: -330, // Indian Standard Time (IST) offset
+    C: 1920,
+    B: 1080,
+    z: clicks,
+    y: moves,
+    x: keys,
+    w: Math.max(500, Math.floor(timeOnPage * 0.4)),
+    v: false,
+    u: '5801b41c'
   };
 
   const jsonStr = JSON.stringify(telemetry);
@@ -399,6 +392,14 @@ apiRouter.get('/captcha', async (req, res) => {
     cookieJar.setFromHeaders(initRes.headers);
     const $ = cheerio.load(initRes.data);
 
+    // Extract dynamic hidden input fields
+    const hiddenInputs = {};
+    $('form#login_form input[type="hidden"], form#login_form input[id="challengeId"], form#login_form input[id="fpNonce"], form#login_form input[id="dname"]').each((_, inp) => {
+      const name = $(inp).attr('name') || $(inp).attr('id');
+      const val = $(inp).val() || '';
+      if (name) hiddenInputs[name] = val;
+    });
+
     // Extract dynamic security configuration
     const tokens = {
       startTime: Date.now(),
@@ -408,6 +409,7 @@ apiRouter.get('/captcha', async (req, res) => {
       captchaFieldName: 'cptoken_266c98',
       randomDelimiter: 'fcf3',
       honeypotName: '',
+      hiddenInputs,
       captchaDataSrc: $('img#secure_captcha').attr('data-src') || ''
     };
 
@@ -459,7 +461,7 @@ apiRouter.get('/captcha', async (req, res) => {
 
       if (imgRes.status === 200) {
         cookieJar.setFromHeaders(imgRes.headers);
-        const base64Img = Buffer.from(imgRes.data, 'binary').toString('base64');
+        const base64Img = Buffer.from(imgRes.data).toString('base64');
         const contentType = imgRes.headers['content-type'] || 'image/png';
         captchaDataUrl = `data:${contentType};base64,${base64Img}`;
       }
@@ -559,13 +561,15 @@ apiRouter.post('/login', async (req, res) => {
     const domainPayload = Buffer.from(reversedHost).toString('base64');
 
     const startTime = tokens.startTime || (Date.now() - 5000);
-    const elapsedSeconds = Math.max(3, Math.floor((Date.now() - startTime) / 1000));
+    const elapsedSeconds = Math.max(2, Math.floor((Date.now() - startTime) / 1000));
     const delimiter = tokens.randomDelimiter || 'fcf3';
-    const trapPayload = `${elapsedSeconds}${delimiter}14`;
+    const interactCount = Math.floor(Math.random() * 15) + 5;
+    const trapPayload = `${elapsedSeconds}${delimiter}${interactCount}`;
     const captchaTokenValue = Buffer.from(trapPayload).toString('base64');
     const telemetryPayload = generateTelemetryPayload(startTime);
 
     const postData = {
+      ...(tokens.hiddenInputs || {}),
       username: cleanUsername,
       password: password,
       captcha: (captcha || '').trim(),
@@ -577,7 +581,7 @@ apiRouter.post('/login', async (req, res) => {
       fpToken: ''
     };
 
-    console.log('[LOGIN ATTEMPT] Processing user authentication request');
+    console.log('[LOGIN ATTEMPT] Processing user authentication request for:', cleanUsername);
 
     const loginResponse = await axios.post(
       PORTAL_CONFIG.loginUrl,

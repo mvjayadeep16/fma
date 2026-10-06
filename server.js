@@ -15,6 +15,25 @@ app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// -----------------------------------------------------------------------
+// Proxy helper: when PROXY_BASE_URL is set (e.g. Cloudflare Worker URL),
+// all SRM requests are routed through it to bypass datacenter IP blocking.
+// Locally (no env var) requests go directly to sp.srmist.edu.in.
+// Usage: proxyUrl('https://sp.srmist.edu.in/srmiststudentportal/')
+//   --> 'https://flashman-proxy.xxx.workers.dev/srmiststudentportal/'
+// -----------------------------------------------------------------------
+const PROXY_BASE_URL = (process.env.PROXY_BASE_URL || '').replace(/\/$/, '');
+
+function proxyUrl(srmUrl) {
+  if (!PROXY_BASE_URL) return srmUrl;
+  try {
+    const parsed = new URL(srmUrl);
+    return `${PROXY_BASE_URL}${parsed.pathname}${parsed.search}`;
+  } catch (e) {
+    return srmUrl;
+  }
+}
+
 // Immutable Portal Configuration Constants
 const PORTAL_CONFIG = Object.freeze({
   baseUrl: 'https://sp.srmist.edu.in',
@@ -313,7 +332,7 @@ apiRouter.get('/health', async (req, res) => {
   const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
   try {
-    const portalRes = await axios.get(PORTAL_CONFIG.portalHomeUrl, {
+    const portalRes = await axios.get(proxyUrl(PORTAL_CONFIG.portalHomeUrl), {
       httpsAgent,
       headers: {
         'User-Agent': userAgent,
@@ -370,7 +389,7 @@ apiRouter.get('/captcha', async (req, res) => {
     const cookieJar = new CookieJar();
 
     // Request portal login page to get initial cookies and tokens
-    const initRes = await axios.get(PORTAL_CONFIG.portalHomeUrl, {
+    const initRes = await axios.get(proxyUrl(PORTAL_CONFIG.portalHomeUrl), {
       httpsAgent,
       headers: {
         'User-Agent': userAgent,
@@ -585,7 +604,7 @@ apiRouter.post('/login', async (req, res) => {
     console.log('[LOGIN ATTEMPT] Processing user authentication request for:', cleanUsername);
 
     const loginResponse = await axios.post(
-      PORTAL_CONFIG.loginUrl,
+      proxyUrl(PORTAL_CONFIG.loginUrl),
       new URLSearchParams(postData).toString(),
       {
         httpsAgent,
@@ -696,7 +715,7 @@ apiRouter.post('/absent-details', async (req, res) => {
     const cookieHeader = session.cookieJar.getCookieHeader();
 
     const detailRes = await axios.post(
-      PORTAL_CONFIG.innerAttendanceUrl,
+      proxyUrl(PORTAL_CONFIG.innerAttendanceUrl),
       new URLSearchParams(postData).toString(),
       {
         httpsAgent,
@@ -817,7 +836,7 @@ apiRouter.get('/debug', async (req, res) => {
   // Try a lightweight probe to the SRM portal
   let portalProbe = { status: null, blocked: null, error: null };
   try {
-    const probe = await axios.get(PORTAL_CONFIG.portalHomeUrl, {
+    const probe = await axios.get(proxyUrl(PORTAL_CONFIG.portalHomeUrl), {
       httpsAgent,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -912,7 +931,7 @@ async function fetchAttendanceWithSession(session, csrfSalt = '', targetPercent 
   };
 
   const attPromise = axios.post(
-    PORTAL_CONFIG.attendanceUrl,
+    proxyUrl(PORTAL_CONFIG.attendanceUrl),
     new URLSearchParams(attendancePost).toString(),
     {
       httpsAgent,
@@ -928,7 +947,7 @@ async function fetchAttendanceWithSession(session, csrfSalt = '', targetPercent 
   );
 
   const profPromise = axios.post(
-    PORTAL_CONFIG.profileUrl,
+    proxyUrl(PORTAL_CONFIG.profileUrl),
     '',
     {
       httpsAgent,
@@ -979,7 +998,7 @@ async function fetchAttendanceWithCookie(cookieInput, targetPercent = 75) {
   };
 
   const attPromise = axios.post(
-    PORTAL_CONFIG.attendanceUrl,
+    proxyUrl(PORTAL_CONFIG.attendanceUrl),
     new URLSearchParams(attendancePost).toString(),
     {
       httpsAgent,
@@ -995,7 +1014,7 @@ async function fetchAttendanceWithCookie(cookieInput, targetPercent = 75) {
   );
 
   const profPromise = axios.post(
-    PORTAL_CONFIG.profileUrl,
+    proxyUrl(PORTAL_CONFIG.profileUrl),
     '',
     {
       httpsAgent,

@@ -27,17 +27,21 @@ const PORTAL_CONFIG = Object.freeze({
 });
 
 // In-memory active user sessions cache (speed-up for single-instance, with stateless fallback)
+// NOTE: On Vercel serverless, this Map is per-invocation and NOT shared across requests.
+// All session state MUST be reconstructible from the base64url sessionId token alone.
 const userSessions = new Map();
 
-// Session clean-up interval (TTL: 1 hour)
-setInterval(() => {
-  const now = Date.now();
-  for (const [id, session] of userSessions.entries()) {
-    if (now - session.lastActive > 3600000) {
-      userSessions.delete(id);
+// Session clean-up interval (TTL: 1 hour) — only meaningful for long-running local server
+if (!process.env.VERCEL) {
+  setInterval(() => {
+    const now = Date.now();
+    for (const [id, session] of userSessions.entries()) {
+      if (now - session.lastActive > 3600000) {
+        userSessions.delete(id);
+      }
     }
-  }
-}, 300000);
+  }, 300000);
+}
 
 /**
  * Attendance Mathematics:
@@ -257,24 +261,13 @@ function encodeSessionId(cookieJar, tokens = {}) {
 
 function decodeSession(sessionId) {
   if (!sessionId || typeof sessionId !== 'string') return null;
-  const cached = userSessions.get(sessionId);
-  if (cached && cached.cookieJar) return cached;
 
-  try {
-    const raw = Buffer.from(sessionId, 'base64url').toString('utf8');
-    const parsed = JSON.parse(raw);
-    if (parsed && Array.isArray(parsed.cookies)) {
-      const restored = {
-        cookieJar: CookieJar.fromJSON(parsed.cookies),
-        tokens: parsed.tokens || {},
-        lastActive: parsed.time || Date.now()
-      };
-      userSessions.set(sessionId, restored);
-      return restored;
-    }
-  } catch (e) {
+  // On Vercel, always decode from token first (Map is empty per cold-start instance)
+  // Try base64url first, then plain base64 as fallback
+  const decoders = ['base64url', 'base64'];
+  for (const encoding of decoders) {
     try {
-      const raw = Buffer.from(sessionId, 'base64').toString('utf8');
+      const raw = Buffer.from(sessionId, encoding).toString('utf8');
       const parsed = JSON.parse(raw);
       if (parsed && Array.isArray(parsed.cookies)) {
         const restored = {
@@ -282,11 +275,19 @@ function decodeSession(sessionId) {
           tokens: parsed.tokens || {},
           lastActive: parsed.time || Date.now()
         };
+        // Cache in Map for same-invocation reuse
         userSessions.set(sessionId, restored);
         return restored;
       }
-    } catch (err) {}
+    } catch (e) {
+      // Try next encoding
+    }
   }
+
+  // Final fallback: check in-memory Map (works locally or within same invocation)
+  const cached = userSessions.get(sessionId);
+  if (cached && cached.cookieJar) return cached;
+
   return null;
 }
 
@@ -377,7 +378,7 @@ apiRouter.get('/captcha', async (req, res) => {
         'Accept-Language': 'en-US,en;q=0.9',
         'Cache-Control': 'no-cache'
       },
-      timeout: 15000,
+      timeout: 25000,
       validateStatus: () => true
     });
 
@@ -598,7 +599,7 @@ apiRouter.post('/login', async (req, res) => {
           'Accept-Language': 'en-US,en;q=0.9'
         },
         maxRedirects: 0,
-        timeout: 20000,
+        timeout: 30000,
         validateStatus: () => true
       }
     );
@@ -804,6 +805,48 @@ apiRouter.get('/demo', (req, res) => {
   return res.json({ success: true, data });
 });
 
+// 10. Debug / Diagnostics endpoint (safe, read-only)
+apiRouter.get('/debug', async (req, res) => {
+  const env = {
+    isVercel: !!process.env.VERCEL,
+    region: process.env.VERCEL_REGION || process.env.AWS_REGION || 'unknown',
+    nodeVersion: process.version,
+    platform: process.platform
+  };
+
+  // Try a lightweight probe to the SRM portal
+  let portalProbe = { status: null, blocked: null, error: null };
+  try {
+    const probe = await axios.get(PORTAL_CONFIG.portalHomeUrl, {
+      httpsAgent,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'text/html'
+      },
+      timeout: 12000,
+      validateStatus: () => true
+    });
+    portalProbe.status = probe.status;
+    portalProbe.blocked = probe.status === 403 || String(probe.data || '').toLowerCase().includes('access denied');
+    portalProbe.captchaPresent = String(probe.data || '').includes('secure_captcha') || String(probe.data || '').includes('cptoken');
+  } catch (e) {
+    portalProbe.error = e.message;
+    portalProbe.blocked = e.code === 'ECONNREFUSED' || e.code === 'ECONNRESET' || (e.message || '').includes('timeout');
+  }
+
+  return res.json({
+    success: true,
+    env,
+    portalProbe,
+    message: portalProbe.blocked
+      ? '⚠️ The SRM portal appears to be blocking this server\'s IP. Use Session Cookie Sync or Paste HTML method instead.'
+      : portalProbe.captchaPresent
+        ? '✅ SRM portal is reachable and captcha is available.'
+        : '⚠️ SRM portal responded but captcha not found — portal may have changed its HTML structure.',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Mount router on both /api and / to ensure seamless compatibility with Vercel rewrites
 app.use('/api', apiRouter);
 app.use('/', apiRouter);
@@ -879,7 +922,7 @@ async function fetchAttendanceWithSession(session, csrfSalt = '', targetPercent 
         'Referer': PORTAL_CONFIG.portalHomeUrl,
         'Cookie': cookieHeader
       },
-      timeout: 15000,
+      timeout: 25000,
       validateStatus: () => true
     }
   );
@@ -895,7 +938,7 @@ async function fetchAttendanceWithSession(session, csrfSalt = '', targetPercent 
         'Referer': 'https://sp.srmist.edu.in/srmiststudentportal/students/template/HRDSystem.jsp',
         'Cookie': cookieHeader
       },
-      timeout: 10000,
+      timeout: 15000,
       validateStatus: () => true
     }
   );
@@ -946,7 +989,7 @@ async function fetchAttendanceWithCookie(cookieInput, targetPercent = 75) {
         'Referer': PORTAL_CONFIG.portalHomeUrl,
         'Cookie': cookieStr
       },
-      timeout: 15000,
+      timeout: 25000,
       validateStatus: () => true
     }
   );
@@ -962,7 +1005,7 @@ async function fetchAttendanceWithCookie(cookieInput, targetPercent = 75) {
         'Referer': 'https://sp.srmist.edu.in/srmiststudentportal/students/template/HRDSystem.jsp',
         'Cookie': cookieStr
       },
-      timeout: 10000,
+      timeout: 15000,
       validateStatus: () => true
     }
   );
